@@ -4,39 +4,49 @@
 
 Antes de comenzar, asegúrate de reiniciar los servicios necesarios en tu máquina virtual o entorno local:
 
+```bash
 sudo systemctl restart docker.service 
 sudo systemctl restart networking.service
+```
 
 ## 2. Configuración y Prueba Local de la Aplicación
 
 ### 2.1. Entorno Python
 
-Primero, verificamos que la aplicación funciona(sin Docker).
+Primero, verificamos que la aplicación funciona "en crudo" (sin Docker).
 
 1. **Crear y activar el entorno virtual:**
-   
+    ```bash
     python3 -m venv venv
     source venv/bin/activate
+    ```
 
-3. **Instalar dependencias:**
-   
+2. **Instalar dependencias:**
+    ```bash
     pip install -r requirements.txt
+    ```
 
-5. **Iniciar la aplicación:**
-
+3. **Iniciar la aplicación:**
+    * *Modo desarrollo:*
+        ```bash
         python src/app.py
+        ```
+    * *Modo producción (recomendado):*
+        ```bash
+        gunicorn --chdir src app:app --bind 0.0.0.0:5000
+        ```
 
-6. **Verificar funcionamiento:**
-   
+4. **Verificar funcionamiento:**
     Abre tu navegador o usa curl:
+    ```bash
     curl http://localhost:5000/status
+    ```
 
 ### 2.2. Creación de Imagen Docker
 
 Dockerizamos la aplicación para asegurar que corra igual en cualquier entorno.
 
 1. **Crear el `Dockerfile`:**
-   
     Asegúrate de tener el archivo con el siguiente contenido:
 
     ```dockerfile
@@ -59,15 +69,17 @@ Dockerizamos la aplicación para asegurar que corra igual en cualquier entorno.
     CMD gunicorn --bind 0.0.0.0:5000 app:app
     ```
 
-3. **Construir la imagen:**
-   
+2. **Construir la imagen:**
     Reemplaza `<usuariodockerhub>` con tu usuario real.
-
+    ```bash
     docker build -t <usuariodockerhub>/galeria:latest .
+    ```
 
-5. **Probar el contenedor:**
-
+3. **Probar el contenedor:**
+    ```bash
     docker run -d -p 80:5000 --name testgaleria <usuariodockerhub>/galeria
+    ```
+    *Para limpiar:* `docker stop testgaleria && docker rm testgaleria`
 
 ### 2.3. Orquestación con Docker Compose
 
@@ -86,12 +98,15 @@ Usaremos `docker-compose` para simplificar la ejecución.
     ```
 
 2. **Ejecutar:**
-
+    ```bash
     docker compose up -d
+    ```
+    *(Para detener usa `docker compose down`)*
 
 3. **Subida manual a DockerHub (Prueba):**
-
+    ```bash
     docker push <usuariodockerhub>/galeria:latest
+    ```
 
 ## 3. Automatización con GitHub Actions (Build & Push)
 
@@ -102,7 +117,7 @@ Configuraremos GitHub para que construya y suba la imagen automáticamente al de
 Para que GitHub tenga permiso de subir imágenes a tu DockerHub, necesitas configurar **Secrets** en el repositorio (`Settings` -> `Security` -> `Secrets and Variables` -> `Actions`).
 
 * `DOCKERHUB_USERNAME`: Tu nombre de usuario.
-* `DOCKERHUB_TOKEN`: Un Access Token generado en DockerHub 
+* `DOCKERHUB_TOKEN`: Un Access Token generado en DockerHub (*Account Settings/Security*).
 
 ### 3.2. Crear el Workflow
 
@@ -145,6 +160,8 @@ jobs:
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/galeria:latest
 ```
 
+**Prueba:** Modifica un fichero en `src/`, haz `git push` y verifica en la pestaña "Actions" de GitHub que el proceso finaliza en verde.
+
 ## 4. Despliegue Automático en AWS
 
 Añadiremos una etapa final para desplegar la nueva imagen en una instancia EC2.
@@ -158,6 +175,8 @@ Necesitas una instancia EC2 con Docker instalado. Añade estos secretos en GitHu
 * `AWS_PRIVATEKEY`: El contenido completo de tu archivo `.pem` (clave privada SSH).
 
 ### 4.2. Actualizar el Workflow
+
+Edita el archivo YAML anterior y añade el trabajo `aws` al final. Este trabajo usa `ssh-action` para conectarse a la máquina y reiniciar los contenedores.
 
 ```yaml
   # ... (código anterior del job build) ...
