@@ -1,224 +1,135 @@
-# Control de versiones y CI/CD - Parte II
+Control de versiones y CI/CD – Parte II
 
-## 1. Preparación del Entorno
+1. Comprobación local
 
-Antes de comenzar, asegúrate de reiniciar los servicios necesarios en tu máquina virtual o entorno local:
+Primero se ejecuta la aplicación en local sin Docker para asegurarse de que funciona correctamente.
 
-```bash
-sudo systemctl restart docker.service 
-sudo systemctl restart networking.service
-```
+En este paso:
 
-## 2. Configuración y Prueba Local de la Aplicación
+Se crea el entorno virtual de Python.
 
-### 2.1. Entorno Python
+Se instalan las dependencias.
 
-Primero, verificamos que la aplicación funciona "en crudo" (sin Docker).
+Se arranca la aplicación.
 
-1. **Crear y activar el entorno virtual:**
-    ```bash
-    python3 -m venv venv
-    source venv/bin/activate
-    ```
+Se comprueba que responde correctamente.
 
-2. **Instalar dependencias:**
-    ```bash
-    pip install -r requirements.txt
-    ```
+Ejemplo básico:
 
-3. **Iniciar la aplicación:**
-    * *Modo desarrollo:*
-        ```bash
-        python src/app.py
-        ```
-    * *Modo producción (recomendado):*
-        ```bash
-        gunicorn --chdir src app:app --bind 0.0.0.0:5000
-        ```
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python src/app.py
 
-4. **Verificar funcionamiento:**
-    Abre tu navegador o usa curl:
-    ```bash
-    curl http://localhost:5000/status
-    ```
+2. Creación de la imagen Docker
 
-### 2.2. Creación de Imagen Docker
+Cuando la aplicación funciona en local, se crea una imagen Docker para poder ejecutarla en cualquier entorno.
 
-Dockerizamos la aplicación para asegurar que corra igual en cualquier entorno.
+En este paso:
 
-1. **Crear el `Dockerfile`:**
-    Asegúrate de tener el archivo con el siguiente contenido:
+Se define el Dockerfile.
 
-    ```dockerfile
-    # start by pulling the python image
-    FROM python:3-slim
+Se construye la imagen.
 
-    # switch working directory
-    WORKDIR /app
+Se prueba el contenedor.
 
-    # copy the requirements file into the image
-    COPY ./requirements.txt ./
+Comando principal:
 
-    # install the dependencies and packages in the requirements file
-    RUN pip install -r requirements.txt
+docker build -t usuario/galeria:latest .
 
-    # copy every content from the local file to the image
-    COPY src .
+3. Ejecución con Docker Compose
 
-    # configure the container to run in an executed manner
-    CMD gunicorn --bind 0.0.0.0:5000 app:app
-    ```
+Después se utiliza Docker Compose para ejecutar el contenedor de forma más sencilla.
 
-2. **Construir la imagen:**
-    Reemplaza `<usuariodockerhub>` con tu usuario real.
-    ```bash
-    docker build -t <usuariodockerhub>/galeria:latest .
-    ```
+En este paso:
 
-3. **Probar el contenedor:**
-    ```bash
-    docker run -d -p 80:5000 --name testgaleria <usuariodockerhub>/galeria
-    ```
-    *Para limpiar:* `docker stop testgaleria && docker rm testgaleria`
+Se crea el archivo docker-compose.yml.
 
-### 2.3. Orquestación con Docker Compose
+Se levanta el servicio con Docker Compose.
 
-Usaremos `docker-compose` para simplificar la ejecución.
+Se comprueba que funciona correctamente.
 
-1. **Crear/Modificar `docker-compose.yml`:**
-    
-    ```yaml
-    services:
-      galeria:
-        container_name: galeria
-        image: <usuariodockerhub>/galeria:latest
-        ports:
-          - 80:5000
-        restart: always
-    ```
+Comando principal:
 
-2. **Ejecutar:**
-    ```bash
-    docker compose up -d
-    ```
-    *(Para detener usa `docker compose down`)*
+docker compose up -d
 
-3. **Subida manual a DockerHub (Prueba):**
-    ```bash
-    docker push <usuariodockerhub>/galeria:latest
-    ```
+4. Automatización con GitHub Actions
 
-## 3. Automatización con GitHub Actions (Build & Push)
+A continuación se configura un workflow en GitHub para automatizar la construcción de la imagen Docker.
 
-Configuraremos GitHub para que construya y suba la imagen automáticamente al detectar cambios.
+El workflow hace lo siguiente:
 
-### 3.1. Configuración de Secretos
+Detecta cambios en el repositorio.
 
-Para que GitHub tenga permiso de subir imágenes a tu DockerHub, necesitas configurar **Secrets** en el repositorio (`Settings` -> `Security` -> `Secrets and Variables` -> `Actions`).
+Construye la imagen Docker.
 
-* `DOCKERHUB_USERNAME`: Tu nombre de usuario.
-* `DOCKERHUB_TOKEN`: Un Access Token generado en DockerHub (*Account Settings/Security*).
+La sube automáticamente a DockerHub.
 
-### 3.2. Crear el Workflow
+Esto permite no tener que construir ni subir la imagen manualmente.
 
-Crea un archivo en `.github/workflows/docker-ci.yml` con el siguiente contenido. Nota que se activa al haber cambios en la carpeta `src`.
+El proceso se activa cada vez que se hace:
 
-```yaml
-name: Docker CI/CD
+git push
 
-on:
-  push:
-    branches: [ main ]
-    paths:
-      - src/**
-  pull_request:
-    branches: [ main ]
-    paths:
-      - src/**
+5. Configuración de Secrets en GitHub
 
-jobs:
-  build:
-    name: Build and Push Docker image
-    runs-on: ubuntu-latest
-    steps:
-      # 1. Descargar el código
-      - uses: actions/checkout@v4
-      
-      # 2. Loguearse en DockerHub
-      - name: Login to DockerHub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          
-      # 3. Construir y subir imagen
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/galeria:latest
-```
+Para que GitHub pueda subir imágenes a DockerHub y conectarse al servidor, necesita credenciales.
+Estas credenciales no se ponen en el código por seguridad, sino que se guardan como Secrets en el repositorio.
 
-**Prueba:** Modifica un fichero en `src/`, haz `git push` y verifica en la pestaña "Actions" de GitHub que el proceso finaliza en verde.
+Los principales secrets son:
 
-## 4. Despliegue Automático en AWS
+Para DockerHub
 
-Añadiremos una etapa final para desplegar la nueva imagen en una instancia EC2.
+DOCKERHUB_USERNAME: nombre de usuario de DockerHub.
 
-### 4.1. Requisitos y Secretos AWS
+DOCKERHUB_TOKEN: token de acceso de DockerHub.
 
-Necesitas una instancia EC2 con Docker instalado. Añade estos secretos en GitHub:
+Estos permiten que GitHub pueda iniciar sesión y subir la imagen.
 
-* `AWS_USERNAME`: Generalmente `admin` (Debian) o `ubuntu` (Ubuntu).
-* `AWS_HOSTNAME`: La IP pública o DNS de tu instancia.
-* `AWS_PRIVATEKEY`: El contenido completo de tu archivo `.pem` (clave privada SSH).
+Para AWS
 
-### 4.2. Actualizar el Workflow
+AWS_USERNAME: usuario de la máquina (por ejemplo, ubuntu).
 
-Edita el archivo YAML anterior y añade el trabajo `aws` al final. Este trabajo usa `ssh-action` para conectarse a la máquina y reiniciar los contenedores.
+AWS_HOSTNAME: IP pública o dominio del servidor.
 
-```yaml
-  # ... (código anterior del job build) ...
+AWS_PRIVATEKEY: clave privada SSH para conectarse.
 
-  aws:
-    name: Deploy image to AWS
-    needs: build  # Espera a que termine el build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      # 1. Copiar el fichero docker-compose al servidor
-      - name: Copy docker compose via SCP
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.AWS_HOSTNAME }}
-          username: ${{ secrets.AWS_USERNAME }}
-          port: 22
-          key: ${{ secrets.AWS_PRIVATEKEY }}
-          source: "docker-compose.yml"
-          target: "/home/${{ secrets.AWS_USERNAME }}"
+Estos permiten que GitHub se conecte al servidor y actualice la aplicación.
 
-      # 2. Conectarse por SSH y desplegar
-      - name: Deploy Docker services via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.AWS_HOSTNAME }}
-          username: ${{ secrets.AWS_USERNAME }}
-          key: ${{ secrets.AWS_PRIVATEKEY }}
-          port: 22
-          script: |
-            # Pausa breve para asegurar que DockerHub procesó la subida
-            sleep 60 
-            # Detener y borrar contenedores e imágenes viejas
-            docker compose down --rmi all
-            # Levantar el servicio con la imagen nueva
-            docker compose up -d
-```
+6. Despliegue automático en AWS
 
-### 4.3. Prueba Final
+Se añade un segundo paso al workflow para desplegar la aplicación en el servidor.
 
-1.  Modifica el archivo `src/index.html` (ej. pon tu nombre en el título).
-2.  Haz `git add`, `git commit` y `git push`.
-3.  Observa en GitHub Actions cómo se ejecuta `build` y luego `aws`.
-4.  Entra a la IP de tu AWS y verifica que el cambio está publicado.
+Cuando se hace push:
+
+GitHub construye la imagen.
+
+La sube a DockerHub.
+
+Se conecta por SSH al servidor.
+
+Descarga la nueva imagen.
+
+Reinicia los contenedores con la versión actualizada.
+
+El servidor queda actualizado automáticamente sin intervención manual.
+
+Flujo completo del sistema
+
+El funcionamiento general es:
+
+Se modifica el código.
+
+Se hace git push.
+
+GitHub construye la imagen Docker.
+
+La imagen se sube a DockerHub.
+
+GitHub se conecta al servidor.
+
+El servidor descarga la nueva imagen.
+
+Se reinicia el contenedor.
+
+La aplicación queda actualizada
